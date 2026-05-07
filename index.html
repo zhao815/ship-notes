@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>船舶生活笔记</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    /* 单独强化搜索框：加边框、加高、更明显 */
+    .search-input {
+      border: 1px solid #ccc !important;
+      border-radius: 6px !important;
+      height: 36px !important;
+      padding: 0 12px !important;
+      font-size: 14px !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: '船舶生活笔记',
+      // 隐藏右上角 GitHub 跳转链接
+      repo: false,
+      // 开启侧边栏目录
+      loadSidebar: true,
+      subMaxLevel: 2,
+      // 搜索配置
+      search: {
+        placeholder: '🔍 搜索食材、储存方法、菜谱...',
+        noData: '暂无匹配内容',
+        pathNamespaces: ['/']
+      },
+      // 关闭多余特效，简洁为主
+      themeColor: '#409eff'
+    }
+  </script>
+  <!-- Docsify 核心 + 搜索插件 -->
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+</body>
+</html>
