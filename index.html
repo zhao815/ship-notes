@@ -110,6 +110,8 @@
         // 全局变量
         let allFiles = [];
         let allContent = {};
+        let allFolders = [];
+        let currentView = 'home'; // 'home', 'folder', 'file'
         // GitHub 仓库配置
         const GITHUB_OWNER = 'zhao815';
         const GITHUB_REPO = 'ship-notes';
@@ -121,6 +123,7 @@
             setupSearch();
             setupMobileMenu();
             setupHashNavigation();
+            renderHome(); // 显示主页
         });
 
         // 自动扫描所有文件夹和文件
@@ -146,6 +149,7 @@
                 );
 
                 console.log('找到的文件夹:', folders.map(f => f.name));
+                allFolders = folders;
 
                 // 遍历每个文件夹，获取里面的.md文件
                 for (const folder of folders) {
@@ -231,6 +235,98 @@
             }
         }
 
+        // 渲染主页 - 显示所有文件夹
+        function renderHome() {
+            const contentDiv = document.getElementById('content');
+            currentView = 'home';
+
+            // 按文件夹分组获取文件数
+            const folderStats = {};
+            allFiles.forEach(file => {
+                if (!folderStats[file.folder]) {
+                    folderStats[file.folder] = 0;
+                }
+                folderStats[file.folder]++;
+            });
+
+            let html = `
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">🍳 船船厨房指南</h2>
+                    <p class="text-gray-600 mb-8">选择下方任意篇章了解详细内容</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            `;
+
+            // 显示所有文件夹
+            for (const folder of allFolders) {
+                const count = folderStats[folder.name] || 0;
+                html += `
+                    <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100" onclick="loadFolderView('${folder.name}')">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-xl font-bold text-primary mb-2">${folder.name}</h3>
+                                <p class="text-gray-600 text-sm">${count} 篇文章</p>
+                            </div>
+                            <div class="text-3xl">
+                                ${getEmojiForFolder(folder.name)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            contentDiv.innerHTML = html;
+        }
+
+        // 获取文件夹对应的 emoji
+        function getEmojiForFolder(folderName) {
+            const emojiMap = {
+                '白菜篇': '🥬',
+                '韭菜篇': '🌿',
+                '菠菜篇': '🥗',
+                '番茄篇': '🍅',
+                '土豆篇': '🥔',
+                '洋葱篇': '🧅'
+            };
+            return emojiMap[folderName] || '📂';
+        }
+
+        // 加载文件夹视图 - 显示该文件夹下的所有文件
+        function loadFolderView(folderName) {
+            const contentDiv = document.getElementById('content');
+            currentView = 'folder';
+            currentFolder = folderName;
+
+            const files = allFiles.filter(f => f.folder === folderName);
+
+            let html = `
+                <div class="mb-6">
+                    <button onclick="renderHome()" class="inline-flex items-center text-primary hover:text-primary/80 transition-colors mb-4">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                        </svg>
+                        返回主页
+                    </button>
+                    <h2 class="text-3xl font-bold text-gray-900 mb-2">${getEmojiForFolder(folderName)} ${folderName}</h2>
+                    <p class="text-gray-600">共 ${files.length} 篇文章</p>
+                </div>
+                <div class="space-y-3">
+            `;
+
+            files.forEach(file => {
+                html += `
+                    <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer hover:bg-gray-50" onclick="loadFile({folder:'${file.folder}', name:'${file.name}', path:'${file.path}', url:'${file.url}'})">
+                        <h3 class="font-medium text-primary mb-1">${file.name}</h3>
+                        <p class="text-gray-600 text-sm">点击查看详情</p>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            contentDiv.innerHTML = html;
+        }
+
         // 渲染目录
         function renderTOC() {
             const toc = document.getElementById('toc');
@@ -295,17 +391,14 @@
                 folderDiv.appendChild(fileList);
                 toc.appendChild(folderDiv);
             }
-
-            // 如果是第一次加载，显示初始消息
-            if (allFiles.length > 0 && !window.location.hash) {
-                document.getElementById('content').innerHTML = '<div class="text-center py-20 text-gray-500"><p class="text-lg">请从左侧目录选择章节查看</p></div>';
-            }
         }
 
         // 加载并渲染文件
         async function loadFile(file) {
             const contentDiv = document.getElementById('content');
             contentDiv.innerHTML = '<div class="text-center py-20 text-gray-500"><p>加载中...</p></div>';
+            currentView = 'file';
+            currentFile = file;
 
             try {
                 let content = allContent[file.path];
@@ -319,8 +412,16 @@
                 // 渲染Markdown
                 const html = marked.parse(content);
                 contentDiv.innerHTML = `
-                    <div class="mb-4 text-sm text-gray-500">
-                        ${file.folder} / ${file.name}
+                    <div class="mb-6">
+                        <button onclick="loadFolderView('${file.folder}')" class="inline-flex items-center text-primary hover:text-primary/80 transition-colors mb-4">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                            </svg>
+                            返回 ${file.folder}
+                        </button>
+                        <div class="text-sm text-gray-500 mb-4">
+                            ${file.folder} / ${file.name}
+                        </div>
                     </div>
                     <div class="markdown-body">
                         ${html}
@@ -344,7 +445,7 @@
             searchInput.addEventListener('input', debounce((e) => {
                 const query = e.target.value.trim().toLowerCase();
                 if (!query) {
-                    contentDiv.innerHTML = '<div class="text-center py-20 text-gray-500"><p class="text-lg">请从左侧目录选择章节查看</p></div>';
+                    renderHome();
                     return;
                 }
 
