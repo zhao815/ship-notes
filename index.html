@@ -1,42 +1,389 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <title>船舶生活笔记</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    /* 单独强化搜索框：加边框、加高、更明显 */
-    .search-input {
-      border: 1px solid #ccc !important;
-      border-radius: 6px !important;
-      height: 36px !important;
-      padding: 0 12px !important;
-      font-size: 14px !important;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>船船厨房指南</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .markdown-body h1 {
+                @apply text-2xl font-bold mb-4 mt-6 pb-2 border-b border-gray-200;
+            }
+            .markdown-body h2 {
+                @apply text-xl font-bold mb-3 mt-5;
+            }
+            .markdown-body h3 {
+                @apply text-lg font-semibold mb-2 mt-4;
+            }
+            .markdown-body p {
+                @apply mb-3 leading-relaxed;
+            }
+            .markdown-body ul, .markdown-body ol {
+                @apply mb-3 pl-6;
+            }
+            .markdown-body li {
+                @apply mb-1;
+            }
+            .markdown-body code {
+                @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm;
+            }
+            .markdown-body pre {
+                @apply bg-gray-100 p-4 rounded-lg mb-4 overflow-x-auto;
+            }
+            .markdown-body blockquote {
+                @apply border-l-4 border-primary pl-4 italic text-gray-600 mb-4;
+            }
+            .markdown-body table {
+                @apply w-full border-collapse mb-4;
+            }
+            .markdown-body th, .markdown-body td {
+                @apply border border-gray-300 px-3 py-2;
+            }
+            .markdown-body th {
+                @apply bg-gray-50 font-semibold;
+            }
+        }
+    </style>
 </head>
-<body>
-  <div id="app"></div>
-  <script>
-    window.$docsify = {
-      name: '船舶生活笔记',
-      // 隐藏右上角 GitHub 跳转链接
-      repo: false,
-      // 开启侧边栏目录
-      loadSidebar: true,
-      subMaxLevel: 2,
-      // 搜索配置
-      search: {
-        placeholder: '🔍 搜索食材、储存方法、菜谱...',
-        noData: '暂无匹配内容',
-        pathNamespaces: ['/']
-      },
-      // 关闭多余特效，简洁为主
-      themeColor: '#409eff'
-    }
-  </script>
-  <!-- Docsify 核心 + 搜索插件 -->
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 顶部导航栏 -->
+    <header class="sticky top-0 z-50 bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <h1 class="text-xl font-bold text-gray-900">船船厨房指南</h1>
+                <div class="w-full max-w-md ml-8">
+                    <input 
+                        type="text" 
+                        id="searchInput" 
+                        placeholder="搜索所有内容..." 
+                        class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+                    >
+                </div>
+                <button id="menuToggle" class="lg:hidden p-2 rounded-md text-gray-500 hover:bg-gray-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
+        <!-- 左侧目录 -->
+        <aside id="sidebar" class="lg:w-64 flex-shrink-0 hidden lg:block">
+            <div class="sticky top-24 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-120px)] overflow-y-auto">
+                <h2 class="font-semibold text-gray-700 mb-3">目录</h2>
+                <div id="toc" class="space-y-1"></div>
+            </div>
+        </aside>
+
+        <!-- 右侧内容区 -->
+        <main class="flex-1">
+            <div id="content" class="bg-white rounded-lg shadow-sm p-6 md:p-8 min-h-[calc(100vh-120px)]">
+                <div class="text-center py-20 text-gray-500">
+                    <p class="text-lg">请从左侧目录选择章节查看</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 移动端侧边栏遮罩 -->
+    <div id="overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden"></div>
+
+    <script>
+        // 全局变量
+        let allFiles = [];
+        let allContent = {};
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadAllFiles();
+            renderTOC();
+            setupSearch();
+            setupMobileMenu();
+            setupHashNavigation();
+        });
+
+        // 自动扫描所有文件夹和文件
+        async function loadAllFiles() {
+            try {
+                // 获取仓库根目录文件列表
+                const response = await fetch('https://api.github.com/repos/' + window.location.pathname.split('/')[1] + '/' + window.location.pathname.split('/')[2] + '/contents');
+                const data = await response.json();
+                
+                // 筛选出所有文件夹（排除.github等系统文件夹）
+                const folders = data.filter(item => 
+                    item.type === 'dir' && 
+                    !item.name.startsWith('.') && 
+                    item.name !== 'node_modules'
+                );
+
+                // 遍历每个文件夹，获取里面的.md文件
+                for (const folder of folders) {
+                    const folderResponse = await fetch(folder.url);
+                    const folderData = await folderResponse.json();
+                    
+                    const mdFiles = folderData.filter(item => 
+                        item.type === 'file' && 
+                        item.name.endsWith('.md')
+                    );
+
+                    for (const file of mdFiles) {
+                        const fileName = file.name.replace('.md', '');
+                        allFiles.push({
+                            folder: folder.name,
+                            name: fileName,
+                            path: file.download_url,
+                            url: file.html_url
+                        });
+                    }
+                }
+
+                // 按文件夹和文件名排序
+                allFiles.sort((a, b) => {
+                    if (a.folder !== b.folder) {
+                        return a.folder.localeCompare(b.folder, 'zh-CN');
+                    }
+                    return a.name.localeCompare(b.name, 'zh-CN');
+                });
+
+                // 预加载所有内容用于搜索
+                for (const file of allFiles) {
+                    try {
+                        const contentResponse = await fetch(file.path);
+                        allContent[file.path] = await contentResponse.text();
+                    } catch (e) {
+                        console.error('加载文件失败:', file.path, e);
+                    }
+                }
+
+            } catch (e) {
+                console.error('扫描仓库失败:', e);
+                // 本地开发时的备用方案（手动添加文件）
+                console.log('本地开发模式，请手动添加文件');
+            }
+        }
+
+        // 渲染目录
+        function renderTOC() {
+            const toc = document.getElementById('toc');
+            toc.innerHTML = '';
+
+            // 按文件夹分组
+            const grouped = {};
+            allFiles.forEach(file => {
+                if (!grouped[file.folder]) {
+                    grouped[file.folder] = [];
+                }
+                grouped[file.folder].push(file);
+            });
+
+            // 生成目录
+            for (const [folder, files] of Object.entries(grouped)) {
+                const folderDiv = document.createElement('div');
+                folderDiv.className = 'mb-4';
+
+                const folderTitle = document.createElement('h3');
+                folderTitle.className = 'font-medium text-gray-800 mb-2 cursor-pointer flex items-center';
+                folderTitle.innerHTML = `
+                    <svg class="w-4 h-4 mr-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                    ${folder}
+                `;
+
+                const fileList = document.createElement('ul');
+                fileList.className = 'pl-5 space-y-1';
+
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    const a = document.createElement('a');
+                    a.href = `#${encodeURIComponent(file.folder)}/${encodeURIComponent(file.name)}`;
+                    a.textContent = file.name;
+                    a.className = 'block py-1 px-2 rounded text-gray-600 hover:bg-gray-100 hover:text-primary transition-colors';
+                    
+                    a.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        loadFile(file);
+                        window.location.hash = a.hash;
+                        closeMobileMenu();
+                    });
+
+                    li.appendChild(a);
+                    fileList.appendChild(li);
+                });
+
+                // 文件夹折叠/展开功能
+                folderTitle.addEventListener('click', () => {
+                    fileList.classList.toggle('hidden');
+                    folderTitle.querySelector('svg').classList.toggle('rotate-90');
+                });
+
+                folderDiv.appendChild(folderTitle);
+                folderDiv.appendChild(fileList);
+                toc.appendChild(folderDiv);
+            }
+        }
+
+        // 加载并渲染文件
+        async function loadFile(file) {
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = '<div class="text-center py-20 text-gray-500"><p>加载中...</p></div>';
+
+            try {
+                let content = allContent[file.path];
+                if (!content) {
+                    const response = await fetch(file.path);
+                    content = await response.text();
+                    allContent[file.path] = content;
+                }
+
+                // 渲染Markdown
+                const html = marked.parse(content);
+                contentDiv.innerHTML = `
+                    <div class="mb-4 text-sm text-gray-500">
+                        ${file.folder} / ${file.name}
+                    </div>
+                    <div class="markdown-body">
+                        ${html}
+                    </div>
+                `;
+
+                // 滚动到顶部
+                window.scrollTo(0, 0);
+
+            } catch (e) {
+                contentDiv.innerHTML = `<div class="text-center py-20 text-red-500"><p>加载失败，请检查文件是否存在</p><p class="text-sm mt-2">${file.path}</p></div>`;
+                console.error('加载文件失败:', e);
+            }
+        }
+
+        // 搜索功能
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            const contentDiv = document.getElementById('content');
+
+            searchInput.addEventListener('input', debounce((e) => {
+                const query = e.target.value.trim().toLowerCase();
+                if (!query) {
+                    contentDiv.innerHTML = '<div class="text-center py-20 text-gray-500"><p class="text-lg">请从左侧目录选择章节查看</p></div>';
+                    return;
+                }
+
+                // 搜索所有内容
+                const results = [];
+                for (const file of allFiles) {
+                    const content = allContent[file.path] || '';
+                    if (content.toLowerCase().includes(query)) {
+                        // 找到匹配的上下文
+                        const index = content.toLowerCase().indexOf(query);
+                        const start = Math.max(0, index - 50);
+                        const end = Math.min(content.length, index + 150);
+                        const snippet = '...' + content.slice(start, end) + '...';
+                        
+                        results.push({
+                            file,
+                            snippet
+                        });
+                    }
+                }
+
+                // 显示搜索结果
+                if (results.length === 0) {
+                    contentDiv.innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-lg">未找到包含"${query}"的内容</p></div>`;
+                } else {
+                    let html = `<h2 class="text-xl font-bold mb-4">搜索结果 (${results.length})</h2><div class="space-y-4">`;
+                    
+                    results.forEach(result => {
+                        html += `
+                            <div class="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow cursor-pointer" onclick="loadFile({folder:'${result.file.folder}', name:'${result.file.name}', path:'${result.file.path}'}); window.location.hash='#${encodeURIComponent(result.file.folder)}/${encodeURIComponent(result.file.name)}';">
+                                <h3 class="font-medium text-primary mb-2">${result.file.folder} / ${result.file.name}</h3>
+                                <p class="text-gray-600 text-sm">${result.snippet.replace(new RegExp(query, 'gi'), match => `<mark class="bg-yellow-100">${match}</mark>`)}</p>
+                            </div>
+                        `;
+                    });
+
+                    html += '</div>';
+                    contentDiv.innerHTML = html;
+                }
+            }, 300));
+        }
+
+        // 移动端菜单
+        function setupMobileMenu() {
+            const menuToggle = document.getElementById('menuToggle');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('hidden');
+                sidebar.classList.toggle('fixed');
+                sidebar.classList.toggle('inset-0');
+                sidebar.classList.toggle('z-50');
+                sidebar.classList.toggle('w-3/4');
+                sidebar.classList.toggle('max-w-xs');
+                overlay.classList.toggle('hidden');
+            });
+
+            overlay.addEventListener('click', closeMobileMenu);
+        }
+
+        function closeMobileMenu() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+            
+            sidebar.classList.add('hidden');
+            sidebar.classList.remove('fixed', 'inset-0', 'z-50', 'w-3/4', 'max-w-xs');
+            overlay.classList.add('hidden');
+        }
+
+        // 哈希导航
+        function setupHashNavigation() {
+            if (window.location.hash) {
+                const hash = decodeURIComponent(window.location.hash.slice(1));
+                const [folder, name] = hash.split('/');
+                
+                const file = allFiles.find(f => f.folder === folder && f.name === name);
+                if (file) {
+                    loadFile(file);
+                }
+            }
+
+            window.addEventListener('hashchange', () => {
+                const hash = decodeURIComponent(window.location.hash.slice(1));
+                const [folder, name] = hash.split('/');
+                
+                const file = allFiles.find(f => f.folder === folder && f.name === name);
+                if (file) {
+                    loadFile(file);
+                }
+            });
+        }
+
+        // 防抖函数
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+    </script>
 </body>
 </html>
