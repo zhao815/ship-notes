@@ -208,7 +208,9 @@
                             console.warn(`无法加载文件 ${file.path}: ${contentResponse.status}`);
                             continue;
                         }
-                        allContent[file.path] = await contentResponse.text();
+                        const content = await contentResponse.text();
+                        allContent[file.path] = content;
+                        console.log(`✓ 加载: ${file.folder}/${file.name} - ${content.length} 字符`);
                     } catch (e) {
                         console.error('加载文件失败:', file.path, e);
                     }
@@ -228,7 +230,7 @@
             }
         }
 
-        // 渲染主页 - 显示所有文件夹
+        // 渲染主页
         function renderHome() {
             const contentDiv = document.getElementById('content');
             currentView = 'home';
@@ -252,7 +254,7 @@
             for (const folder of allFolders) {
                 const count = folderStats[folder.name] || 0;
                 html += `
-                    <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100" data-folder="${folder.name}">
+                    <div class="folder-card border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100">
                         <div class="flex items-center justify-between">
                             <div>
                                 <h3 class="text-xl font-bold text-primary mb-2">${folder.name}</h3>
@@ -270,9 +272,9 @@
             contentDiv.innerHTML = html;
 
             // 为每个卡片添加点击事件
-            document.querySelectorAll('[data-folder]').forEach(card => {
+            document.querySelectorAll('.folder-card').forEach((card, index) => {
                 card.addEventListener('click', function() {
-                    loadFolderView(this.dataset.folder);
+                    loadFolderView(allFolders[index].name);
                 });
             });
         }
@@ -290,7 +292,7 @@
             return emojiMap[folderName] || '📂';
         }
 
-        // 加载文件夹视图 - 显示该文件夹下的所有文件
+        // 加载文件夹视图
         function loadFolderView(folderName) {
             const contentDiv = document.getElementById('content');
             currentView = 'folder';
@@ -313,7 +315,7 @@
 
             files.forEach((file, index) => {
                 html += `
-                    <div class="file-card border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer hover:bg-gray-50" data-file-index="${index}">
+                    <div class="file-card border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer hover:bg-gray-50">
                         <h3 class="font-medium text-primary mb-1">${file.name}</h3>
                         <p class="text-gray-600 text-sm">点击查看详情</p>
                     </div>
@@ -327,11 +329,9 @@
             document.querySelector('.return-home-btn').addEventListener('click', renderHome);
 
             // 为文件卡片添加点击事件
-            document.querySelectorAll('.file-card').forEach(card => {
+            document.querySelectorAll('.file-card').forEach((card, idx) => {
                 card.addEventListener('click', function() {
-                    const index = parseInt(this.dataset.fileIndex);
-                    const file = files[index];
-                    loadFile(file);
+                    loadFile(files[idx]);
                 });
             });
         }
@@ -444,43 +444,59 @@
             }
         }
 
-        // 搜索功能
+        // 搜索功能 - 完全重写
         function setupSearch() {
             const searchInput = document.getElementById('searchInput');
             const contentDiv = document.getElementById('content');
 
             searchInput.addEventListener('input', debounce((e) => {
                 const query = e.target.value.trim().toLowerCase();
+                console.log('搜索查询:', query);
+                console.log('可搜索文件数:', allFiles.length);
+                console.log('已加载内容数:', Object.keys(allContent).length);
+
                 if (!query) {
                     renderHome();
                     return;
                 }
 
                 const results = [];
+                
                 for (const file of allFiles) {
-                    const content = allContent[file.path] || '';
-                    if (content.toLowerCase().includes(query)) {
-                        const index = content.toLowerCase().indexOf(query);
+                    const content = allContent[file.path];
+                    
+                    if (!content) {
+                        console.warn(`文件无内容: ${file.folder}/${file.name}`);
+                        continue;
+                    }
+
+                    const contentLower = content.toLowerCase();
+                    
+                    if (contentLower.includes(query)) {
+                        console.log(`✓ 找到匹配: ${file.folder}/${file.name}`);
+                        const index = contentLower.indexOf(query);
                         const start = Math.max(0, index - 50);
                         const end = Math.min(content.length, index + 150);
                         const snippet = '...' + content.slice(start, end) + '...';
                         
                         results.push({
                             file,
-                            snippet
+                            snippet,
+                            index
                         });
                     }
                 }
 
+                console.log('搜索结果数:', results.length);
+
                 if (results.length === 0) {
                     contentDiv.innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-lg">未找到包含"${escapeHtml(query)}"的内容</p></div>`;
                 } else {
-                    let html = `<h2 class="text-xl font-bold mb-4">搜索结果 (${results.length})</h2><div class="space-y-4">`;
+                    let html = `<h2 class="text-xl font-bold mb-4">搜索结果 (${results.length})</h2><div class="space-y-4" id="search-results">`;
                     
                     results.forEach((result, index) => {
-                        const resultId = `search-result-${index}`;
                         html += `
-                            <div class="search-result border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer" id="${resultId}">
+                            <div class="search-result-item border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer" data-result-index="${index}">
                                 <h3 class="font-medium text-primary mb-2">${escapeHtml(result.file.folder)} / ${escapeHtml(result.file.name)}</h3>
                                 <p class="text-gray-600 text-sm">${result.snippet.replace(new RegExp(query, 'gi'), match => `<mark class="bg-yellow-100">${match}</mark>`)}</p>
                             </div>
@@ -491,8 +507,10 @@
                     contentDiv.innerHTML = html;
 
                     // 为搜索结果添加点击事件
-                    document.querySelectorAll('.search-result').forEach((element, idx) => {
-                        element.addEventListener('click', function() {
+                    document.querySelectorAll('.search-result-item').forEach(item => {
+                        item.addEventListener('click', function() {
+                            const idx = parseInt(this.dataset.resultIndex);
+                            console.log('点击了搜索结果:', idx, results[idx]);
                             loadFile(results[idx].file);
                         });
                     });
