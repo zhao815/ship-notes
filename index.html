@@ -82,6 +82,7 @@
     <script>
         let allFiles = [];
         let allContent = {};
+        let allFolders = [];
         let searchResults = [];
         const REPO = 'zhao815/ship-notes';
 
@@ -105,23 +106,43 @@
                 if (!repoResp.ok) throw new Error(`API 错误: ${repoResp.status}`);
                 
                 const items = await repoResp.json();
-                console.log('根目录项:', items.map(i => i.name));
+                console.log('找到根目录项:', items.length);
 
                 // 遍历每个文件夹
                 for (const item of items) {
-                    if (item.type !== 'dir' || item.name.startsWith('.')) continue;
+                    // 只处理文件夹，且跳过隐藏文件夹
+                    if (item.type !== 'dir' || item.name.startsWith('.')) {
+                        continue;
+                    }
                     
+                    allFolders.push(item.name);
                     console.log(`扫描文件夹: ${item.name}`);
                     
                     try {
+                        // 获取该文件夹内的文件
                         const folderResp = await fetch(item.url);
-                        if (!folderResp.ok) throw new Error(`无法访问文件夹 ${item.name}`);
+                        if (!folderResp.ok) {
+                            console.warn(`无法访问文件夹 ${item.name}: ${folderResp.status}`);
+                            continue;
+                        }
                         
-                        const files = await folderResp.json();
+                        const folderContent = await folderResp.json();
                         
-                        for (const file of files) {
-                            if (!file.name.endsWith('.md')) continue;
-                            
+                        // 确保 folderContent 是数组
+                        if (!Array.isArray(folderContent)) {
+                            console.warn(`文件夹 ${item.name} 返回的不是数组`);
+                            continue;
+                        }
+                        
+                        // 筛选 MD 文件
+                        const mdFiles = folderContent.filter(file => 
+                            file.type === 'file' && file.name.endsWith('.md')
+                        );
+
+                        console.log(`  └─ 找到 ${mdFiles.length} 个 MD 文件`);
+                        
+                        // 处理每个 MD 文件
+                        for (const file of mdFiles) {
                             const fileObj = {
                                 folder: item.name,
                                 name: file.name.replace('.md', ''),
@@ -129,28 +150,32 @@
                                 htmlUrl: file.html_url
                             };
                             
+                            allFiles.push(fileObj);
+                            
                             // 预加载内容
                             try {
                                 const contentResp = await fetch(fileObj.rawUrl);
                                 if (contentResp.ok) {
-                                    allContent[fileObj.folder + '/' + fileObj.name] = await contentResp.text();
-                                    console.log(`✓ 加载: ${fileObj.folder}/${fileObj.name}`);
+                                    const content = await contentResp.text();
+                                    allContent[fileObj.folder + '/' + fileObj.name] = content;
+                                    console.log(`    ✓ ${file.name}`);
                                 }
                             } catch (e) {
-                                console.warn(`加载内容失败: ${fileObj.folder}/${fileObj.name}`);
+                                console.warn(`    ✗ 加载内容失败: ${file.name}`);
                             }
-                            
-                            allFiles.push(fileObj);
                         }
                     } catch (e) {
-                        console.error(`文件夹加载失败 ${item.name}:`, e);
+                        console.error(`文件夹加载失败 ${item.name}:`, e.message);
                     }
                 }
 
-                console.log(`总共加载 ${allFiles.length} 个文件，内容数 ${Object.keys(allContent).length}`);
+                console.log(`\n=== 加载完成 ===`);
+                console.log(`文件夹数: ${allFolders.length}`);
+                console.log(`总文件数: ${allFiles.length}`);
+                console.log(`已加载内容: ${Object.keys(allContent).length}`);
                 
                 if (allFiles.length === 0) {
-                    document.getElementById('content').innerHTML = '<p class="text-red-500">未找到任何文档</p>';
+                    document.getElementById('content').innerHTML = '<p class="text-red-500">未找到任何 Markdown 文件</p>';
                 }
             } catch (e) {
                 console.error('加载失败:', e);
@@ -168,27 +193,29 @@
             let html = `
                 <div class="mb-8">
                     <h2 class="text-3xl font-bold mb-2">🍳 船船厨房指南</h2>
-                    <p class="text-gray-600">共 ${Object.keys(grouped).length} 个篇章，${allFiles.length} 篇文章</p>
+                    <p class="text-gray-600">共 ${allFolders.length} 个篇章，${allFiles.length} 篇文章</p>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             `;
 
-            for (const [folder, files] of Object.entries(grouped)) {
+            allFolders.forEach((folder) => {
+                const count = grouped[folder]?.length || 0;
                 html += `
-                    <div class="folder-btn p-4 rounded-lg border border-gray-200 hover:shadow-lg cursor-pointer transition-all bg-gradient-to-br from-blue-50 to-indigo-50">
+                    <div class="folder-btn p-4 rounded-lg border border-gray-200 hover:shadow-lg cursor-pointer transition-all bg-gradient-to-br from-blue-50 to-indigo-50" data-folder="${folder}">
                         <h3 class="font-bold text-lg text-primary">${folder}</h3>
-                        <p class="text-gray-600 text-sm">${files.length} 篇</p>
+                        <p class="text-gray-600 text-sm">${count} 篇</p>
                     </div>
                 `;
-            }
+            });
             
             html += '</div>';
             document.getElementById('content').innerHTML = html;
 
             // 绑定文件夹按钮
-            document.querySelectorAll('.folder-btn').forEach((btn, idx) => {
-                const folders = Object.keys(grouped);
-                btn.onclick = () => showFolder(folders[idx]);
+            document.querySelectorAll('.folder-btn').forEach((btn) => {
+                btn.addEventListener('click', function() {
+                    showFolder(this.dataset.folder);
+                });
             });
         }
 
@@ -200,9 +227,9 @@
                 <div class="space-y-2">
             `;
 
-            files.forEach((file, idx) => {
+            files.forEach((file) => {
                 html += `
-                    <div class="file-btn p-3 border border-gray-200 rounded hover:shadow cursor-pointer">
+                    <div class="file-btn p-3 border border-gray-200 rounded hover:shadow cursor-pointer" data-file="${folderName}/${file.name}">
                         <p class="font-medium">${file.name}</p>
                     </div>
                 `;
@@ -212,12 +239,18 @@
             document.getElementById('content').innerHTML = html;
 
             // 返回按钮
-            document.querySelector('button').onclick = renderHome;
+            document.querySelector('button').addEventListener('click', renderHome);
 
             // 文件按钮
-            document.querySelectorAll('.file-btn').forEach((btn, idx) => {
-                btn.onclick = () => showFile(files[idx]);
+            document.querySelectorAll('.file-btn').forEach((btn) => {
+                btn.addEventListener('click', function() {
+                    const [folder, name] = this.dataset.file.split('/');
+                    const file = allFiles.find(f => f.folder === folder && f.name === name);
+                    if (file) showFile(file);
+                });
             });
+
+            closeSidebar();
         }
 
         function showFile(file) {
@@ -231,7 +264,8 @@
                 <div class="markdown-body">${html}</div>
             `;
 
-            document.querySelector('button').onclick = () => showFolder(file.folder);
+            document.querySelector('button').addEventListener('click', () => showFolder(file.folder));
+            closeSidebar();
         }
 
         function renderTOC() {
@@ -242,9 +276,11 @@
             });
 
             let html = '';
-            for (const [folder, files] of Object.entries(grouped)) {
+            Object.entries(grouped).forEach(([folder, files]) => {
                 html += `<div class="mb-3">
-                    <div class="font-medium cursor-pointer p-2 hover:bg-gray-100 rounded toggle-folder">${folder}</div>
+                    <div class="font-medium cursor-pointer p-2 hover:bg-gray-100 rounded toggle-folder" data-folder="${folder}">
+                        ${folder} (${files.length})
+                    </div>
                     <div class="folder-items hidden pl-3 space-y-1">`;
                 
                 files.forEach(file => {
@@ -252,74 +288,86 @@
                 });
                 
                 html += `</div></div>`;
-            }
+            });
 
             document.getElementById('toc').innerHTML = html;
 
             // 折叠功能
             document.querySelectorAll('.toggle-folder').forEach(btn => {
-                btn.onclick = function() {
+                btn.addEventListener('click', function() {
                     this.nextElementSibling.classList.toggle('hidden');
-                };
+                });
             });
 
             // 文件链接
             document.querySelectorAll('.file-link').forEach(link => {
-                link.onclick = function() {
+                link.addEventListener('click', function() {
                     const [folder, name] = this.dataset.file.split('/');
                     const file = allFiles.find(f => f.folder === folder && f.name === name);
                     if (file) showFile(file);
-                    closeSidebar();
-                };
+                });
             });
         }
 
         function setupSearch() {
             const input = document.getElementById('searchInput');
+            let timeout;
             input.addEventListener('input', (e) => {
-                const q = e.target.value.toLowerCase().trim();
-                if (!q) {
-                    renderHome();
-                    return;
-                }
-
-                searchResults = [];
-                for (const file of allFiles) {
-                    const content = allContent[file.folder + '/' + file.name] || '';
-                    if (content.toLowerCase().includes(q)) {
-                        const idx = content.toLowerCase().indexOf(q);
-                        const snippet = '...' + content.slice(Math.max(0, idx - 30), idx + 100) + '...';
-                        searchResults.push({ file, snippet });
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    const q = e.target.value.toLowerCase().trim();
+                    if (!q) {
+                        renderHome();
+                        return;
                     }
-                }
 
-                if (searchResults.length === 0) {
-                    document.getElementById('content').innerHTML = '<p class="text-gray-500">未找到搜索结果</p>';
-                } else {
-                    let html = `<h3 class="text-lg font-bold mb-4">搜索结果 (${searchResults.length})</h3><div class="space-y-3">`;
-                    searchResults.forEach((r, idx) => {
-                        html += `
-                            <div class="search-item p-3 border rounded hover:shadow cursor-pointer">
-                                <p class="font-medium text-primary">${r.file.folder} / ${r.file.name}</p>
-                                <p class="text-sm text-gray-600">${r.snippet.replace(new RegExp(q, 'gi'), m => `<mark class="bg-yellow-100">${m}</mark>`)}</p>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    document.getElementById('content').innerHTML = html;
+                    console.log(`搜索: "${q}"`);
+                    searchResults = [];
+                    
+                    for (const file of allFiles) {
+                        const content = allContent[file.folder + '/' + file.name] || '';
+                        if (content.toLowerCase().includes(q)) {
+                            const idx = content.toLowerCase().indexOf(q);
+                            const snippet = '...' + content.slice(Math.max(0, idx - 30), idx + 100) + '...';
+                            searchResults.push({ file, snippet });
+                        }
+                    }
 
-                    document.querySelectorAll('.search-item').forEach((item, idx) => {
-                        item.onclick = () => showFile(searchResults[idx].file);
-                    });
-                }
+                    console.log(`搜索结果: ${searchResults.length}`);
+
+                    if (searchResults.length === 0) {
+                        document.getElementById('content').innerHTML = '<p class="text-gray-500">未找到搜索结果</p>';
+                    } else {
+                        let html = `<h3 class="text-lg font-bold mb-4">搜索结果 (${searchResults.length})</h3><div class="space-y-3">`;
+                        searchResults.forEach((r, idx) => {
+                            html += `
+                                <div class="search-item p-3 border rounded hover:shadow cursor-pointer" data-result-index="${idx}">
+                                    <p class="font-medium text-primary">${r.file.folder} / ${r.file.name}</p>
+                                    <p class="text-sm text-gray-600">${r.snippet.replace(new RegExp(q, 'gi'), m => `<mark class="bg-yellow-100">${m}</mark>`)}</p>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                        document.getElementById('content').innerHTML = html;
+
+                        document.querySelectorAll('.search-item').forEach((item) => {
+                            item.addEventListener('click', function() {
+                                const idx = parseInt(this.dataset.resultIndex);
+                                showFile(searchResults[idx].file);
+                            });
+                        });
+                    }
+                }, 300);
             });
         }
 
         function setupMobileMenu() {
-            document.getElementById('menuToggle').onclick = () => {
-                document.getElementById('sidebar').classList.toggle('hidden');
-                document.getElementById('overlay').classList.toggle('hidden');
-            };
+            document.getElementById('menuToggle').addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('overlay');
+                sidebar.classList.toggle('hidden');
+                overlay.classList.toggle('hidden');
+            });
         }
 
         function closeSidebar() {
@@ -334,11 +382,15 @@
                 if (file) showFile(file);
             }
 
-            window.onhashchange = () => {
+            window.addEventListener('hashchange', () => {
+                if (!location.hash) {
+                    renderHome();
+                    return;
+                }
                 const [folder, name] = decodeURIComponent(location.hash.slice(1)).split('/');
                 const file = allFiles.find(f => f.folder === folder && f.name === name);
                 if (file) showFile(file);
-            };
+            });
         }
     </script>
 </body>
